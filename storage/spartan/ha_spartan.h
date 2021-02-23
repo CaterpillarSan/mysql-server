@@ -52,6 +52,8 @@
   This spartan implements the minimum of what you will probably need.
 */
 class Spartan_share : public Handler_share {
+#define SDE_EXT ".sde"
+#define SDI_EXT ".sdi"
  public:
   mysql_mutex_t mutex;
   THR_LOCK lock;

@@ -22,8 +22,7 @@
 
 SET(SPARTAN_PLUGIN_STATIC "ha_spartan")
 SET(SPARTAN_PLUGIN_DYNAMIC "ha_spartan")
-# SET(SPARTAN_SOURCES ha_spartan.cc ha_spartan.h spartan_data.cc spartan_data.h)
-SET(SPARTAN_SOURCES ha_spartan.cc ha_spartan.h)
+SET(SPARTAN_SOURCES ha_spartan.cc ha_spartan.h spartan_data.cc spartan_data.h)
 # ADD_DEFINITIONS(-DMYSQL_SERVER)
 MYSQL_ADD_PLUGIN(spartan ${SPARTAN_SOURCES} STORAGE_ENGINE MODULE_ONLY)
 # IF(WITH_SPARTAN_STORAGE_ENGINE AND NOT WITHOUT_SPARTAN_STORAGE_ENGINE)

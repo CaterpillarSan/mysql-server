@@ -1,96 +1,10 @@
-/* Copyright (c) 2004, 2020, Oracle and/or its affiliates. All rights reserved.
+/*
+ * Spartan storage engine.
+ */
 
-  This program is free software; you can redistribute it and/or modify
-  it under the terms of the GNU General Public License, version 2.0,
-  as published by the Free Software Foundation.
 
-  This program is also distributed with certain software (including
-  but not limited to OpenSSL) that is licensed under separate terms,
-  as designated in a particular file or component or in included license
-  documentation.  The authors of MySQL hereby grant you an additional
-  permission to link the program and your derivative works with the
-  separately licensed software that they have included with MySQL.
-
-  This program is distributed in the hope that it will be useful,
-  but WITHOUT ANY WARRANTY; without even the implied warranty of
-  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-  GNU General Public License, version 2.0, for more details.
-
-  You should have received a copy of the GNU General Public License
-  along with this program; if not, write to the Free Software
-  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301  USA */
-
-/**
-  @file ha_spartan.cc
-
-  @brief
-  The ha_spartan engine is a stubbed storage engine for spartan purposes only;
-  it does nothing at this point. Its purpose is to provide a source
-  code illustration of how to begin writing new storage engines; see also
-  /storage/spartan/ha_spartan.h.
-
-  @details
-  ha_spartan will let you create/open/delete tables, but
-  nothing further (for spartan, indexes are not supported nor can data
-  be stored in the table). Use this spartan as a template for
-  implementing the same functionality in your own storage engine. You
-  can enable the spartan storage engine in your build by doing the
-  following during your build process:<br> ./configure
-  --with-spartan-storage-engine
-
-  Once this is done, MySQL will let you create tables with:<br>
-  CREATE TABLE \<table name\> (...) ENGINE=SPARTAN;
-
-  The spartan storage engine is set up to use table locks. It
-  implements an spartan "SHARE" that is inserted into a hash by table
-  name. You can use this to store information of state that any
-  spartan handler object will be able to see when it is using that
-  table.
-
-  Please read the object definition in ha_spartan.h before reading the rest
-  of this file.
-
-  @note
-  When you create an SPARTAN table, the MySQL Server creates a table .frm
-  (format) file in the database directory, using the table name as the file
-  name as is customary with MySQL. No other files are created. To get an idea
-  of what occurs, here is an spartan select that would do a scan of an entire
-  table:
-
-  @code
-  ha_spartan::store_lock
-  ha_spartan::external_lock
-  ha_spartan::info
-  ha_spartan::rnd_init
-  ha_spartan::extra
-  ha_spartan::rnd_next
-  ha_spartan::rnd_next
-  ha_spartan::rnd_next
-  ha_spartan::rnd_next
-  ha_spartan::rnd_next
-  ha_spartan::rnd_next
-  ha_spartan::rnd_next
-  ha_spartan::rnd_next
-  ha_spartan::rnd_next
-  ha_spartan::extra
-  ha_spartan::external_lock
-  ha_spartan::extra
-  ENUM HA_EXTRA_RESET        Reset database to after open
-  @endcode
-
-  Here you see that the spartan storage engine has 9 rows called before
-  rnd_next signals that it has reached the end of its data. Also note that
-  the table in question was already opened; had it not been open, a call to
-  ha_spartan::open() would also have been necessary. Calls to
-  ha_spartan::extra() are hints as to what will be occurring to the request.
-
-  A Longer Spartan can be found called the "Skeleton Engine" which can be
-  found on TangentOrg. It has both an engine and a full build environment
-  for building a pluggable storage engine.
-
-  Happy coding!<br>
-    -Brian
-*/
+#define SDE_EXT ".sde"
+#define SDI_EXT ".sdi"
 
 #include "storage/spartan/ha_spartan.h"
 
@@ -99,17 +13,6 @@
 #include "sql/sql_class.h"
 #include "sql/sql_plugin.h"
 #include "typelib.h"
-
-#define SDE_EXT ".sde"
-#define SDI_EXT ".sdi"
-
-// static const char *ha_spartan_exts[] = {
-//   SDE_EXT,
-//   SDI_EXT,
-//   NullS
-// };
-
-static PSI_mutex_key ex_key_mutex_Spartan_share_mutex; 
 
 static handler *spartan_create_handler(handlerton *hton, TABLE_SHARE *table,
                                        bool partitioned, MEM_ROOT *mem_root);
@@ -120,12 +23,12 @@ handlerton *spartan_hton;
 static bool spartan_is_supported_system_table(const char *db,
                                               const char *table_name,
                                               bool is_sql_layer_system_table);
+static PSI_mutex_key ex_key_mutex_Spartan_share_mutex;
 
-
-Spartan_share::Spartan_share() {
+Spartan_share::Spartan_share()
+{
   thr_lock_init(&lock);
-  mysql_mutex_init(ex_key_mutex_Spartan_share_mutex,
-		  &mutex, MY_MUTEX_INIT_FAST);
+  mysql_mutex_init(ex_key_mutex_Spartan_share_mutex, &mutex, MY_MUTEX_INIT_FAST);
   data_class = new Spartan_data();
 }
 
@@ -232,15 +135,14 @@ static bool spartan_is_supported_system_table(const char *db,
   handler::ha_open() in handler.cc
 */
 
-int ha_spartan::open(const char * name, int, uint, const dd::Table *) {
+int ha_spartan::open(const char *name, int, uint, const dd::Table *) {
   DBUG_ENTER("ha_spartan::open");
   char name_buff[FN_REFLEN];
 
   if (!(share = get_share())) 
-	DBUG_RETURN(1);
-
+	  DBUG_RETURN(1);
   share->data_class->open_table(fn_format(name_buff, name, "", SDE_EXT,
-			  MY_REPLACE_EXT|MY_UNPACK_FILENAME));
+		  MY_REPLACE_EXT|MY_UNPACK_FILENAME));
   thr_lock_data_init(&share->lock, &lock, nullptr);
 
   DBUG_RETURN(0);
@@ -690,13 +592,12 @@ THR_LOCK_DATA **ha_spartan::store_lock(THD *, THR_LOCK_DATA **to,
   @see
   delete_table and ha_create_table() in handler.cc
 */
-int ha_spartan::delete_table(const char * name, const dd::Table *) {
-	DBUG_ENTER("ha_spartan::delete_table");
-	char name_buff[FN_REFLEN];
-
-	my_delete(fn_format(name_buff, name, "", SDE_EXT,
-				MY_REPLACE_EXT|MY_UNPACK_FILENAME), MYF(0));
-	DBUG_RETURN(0);
+int ha_spartan::delete_table(const char *name, const dd::Table *) {
+  DBUG_ENTER("ha_spartan::delete_table");
+  char name_buff[FN_REFLEN];
+  my_delete(fn_format(name_buff, name, "", SDE_EXT,
+			 MY_REPLACE_EXT|MY_UNPACK_FILENAME), MYF(0));
+  DBUG_RETURN(0);
 }
 
 /**
@@ -704,7 +605,7 @@ int ha_spartan::delete_table(const char * name, const dd::Table *) {
   Renames a table from one name to another via an alter table call.
 
   @details
-  If you do not implement this, the default rename_table() is called from
+  If you do not implement this, the default rename_table) is called from
   handler.cc and it will delete all files with the file extensions from
   handlerton::file_extensions.
 
@@ -713,18 +614,19 @@ int ha_spartan::delete_table(const char * name, const dd::Table *) {
   @see
   mysql_rename_table() in sql_table.cc
 */
-int ha_spartan::rename_table(const char * from, const char * to, const dd::Table *,
+int ha_spartan::rename_table(const char *from, const char *to, const dd::Table *,
                              dd::Table *) {
   DBUG_ENTER("ha_spartan::rename_table");
   char data_from[FN_REFLEN];
   char data_to[FN_REFLEN];
 
-  my_copy(fn_format(data_from, from, "", SDE_EXT,
-			  MY_REPLACE_EXT|MY_UNPACK_FILENAME),
-		  fn_format(data_to, to, "", SDE_EXT,
-			  MY_REPLACE_EXT|MY_UNPACK_FILENAME),
-		  MYF(0));
-  my_delete(data_from, MYF(0));
+  fn_format(data_from, from, "", SDE_EXT, MY_REPLACE_EXT|MY_UNPACK_FILENAME),
+  fn_format(data_to, to, "", SDE_EXT, MY_REPLACE_EXT|MY_UNPACK_FILENAME),
+
+ // DON'T USE my_copy on MySQL8.0
+ //  my_copy(data_from, data_to, MYF(0));
+ //  my_delete(data_from, MYF(0));
+  my_rename(data_from, data_to, MYF(0));
   DBUG_RETURN(0);
 }
 
@@ -773,15 +675,15 @@ static MYSQL_THDVAR_UINT(create_count_thdvar, 0, nullptr, nullptr, nullptr, 0,
 
 int ha_spartan::create(const char *name, TABLE *, HA_CREATE_INFO *,
                        dd::Table *) {
-   DBUG_ENTER("ha_spartan::create"); 
-   char name_buff[FN_REFLEN];
-
-   if (!(share = get_share()))
-	   DBUG_RETURN(1);
-   if (share->data_class->create_table(fn_format(name_buff, name, "", SDE_EXT, MY_REPLACE_EXT|MY_UNPACK_FILENAME)))
-	   DBUG_RETURN(-1);
-   share->data_class->close_table();
-   DBUG_RETURN(0);
+  DBUG_ENTER("ha_spartan::create");
+  char name_buff[FN_REFLEN];
+  if (!(share = get_share()))
+	  DBUG_RETURN(1);
+  if (share->data_class->create_table(fn_format(name_buff, name, "", SDE_EXT,
+				  MY_REPLACE_EXT|MY_UNPACK_FILENAME)))
+	  DBUG_RETURN(-1);
+  share->data_class->close_table();
+  DBUG_RETURN(0);
 }
 
 struct st_mysql_storage_engine spartan_storage_engine = {

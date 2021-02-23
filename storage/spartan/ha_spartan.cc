@@ -100,6 +100,17 @@
 #include "sql/sql_plugin.h"
 #include "typelib.h"
 
+#define SDE_EXT ".sde"
+#define SDI_EXT ".sdi"
+
+// static const char *ha_spartan_exts[] = {
+//   SDE_EXT,
+//   SDI_EXT,
+//   NullS
+// };
+
+static PSI_mutex_key ex_key_mutex_Spartan_share_mutex; 
+
 static handler *spartan_create_handler(handlerton *hton, TABLE_SHARE *table,
                                        bool partitioned, MEM_ROOT *mem_root);
 
@@ -110,7 +121,13 @@ static bool spartan_is_supported_system_table(const char *db,
                                               const char *table_name,
                                               bool is_sql_layer_system_table);
 
-Spartan_share::Spartan_share() { thr_lock_init(&lock); }
+
+Spartan_share::Spartan_share() {
+  thr_lock_init(&lock);
+  mysql_mutex_init(ex_key_mutex_Spartan_share_mutex,
+		  &mutex, MY_MUTEX_INIT_FAST);
+  data_class = new Spartan_data();
+}
 
 static int spartan_init_func(void *p) {
   DBUG_TRACE;
@@ -215,13 +232,18 @@ static bool spartan_is_supported_system_table(const char *db,
   handler::ha_open() in handler.cc
 */
 
-int ha_spartan::open(const char *, int, uint, const dd::Table *) {
-  DBUG_TRACE;
+int ha_spartan::open(const char * name, int, uint, const dd::Table *) {
+  DBUG_ENTER("ha_spartan::open");
+  char name_buff[FN_REFLEN];
 
-  if (!(share = get_share())) return 1;
+  if (!(share = get_share())) 
+	DBUG_RETURN(1);
+
+  share->data_class->open_table(fn_format(name_buff, name, "", SDE_EXT,
+			  MY_REPLACE_EXT|MY_UNPACK_FILENAME));
   thr_lock_data_init(&share->lock, &lock, nullptr);
 
-  return 0;
+  DBUG_RETURN(0);
 }
 
 /**
@@ -668,10 +690,13 @@ THR_LOCK_DATA **ha_spartan::store_lock(THD *, THR_LOCK_DATA **to,
   @see
   delete_table and ha_create_table() in handler.cc
 */
-int ha_spartan::delete_table(const char *, const dd::Table *) {
-  DBUG_TRACE;
-  /* This is not implemented but we want someone to be able that it works. */
-  return 0;
+int ha_spartan::delete_table(const char * name, const dd::Table *) {
+	DBUG_ENTER("ha_spartan::delete_table");
+	char name_buff[FN_REFLEN];
+
+	my_delete(fn_format(name_buff, name, "", SDE_EXT,
+				MY_REPLACE_EXT|MY_UNPACK_FILENAME), MYF(0));
+	DBUG_RETURN(0);
 }
 
 /**
@@ -688,10 +713,19 @@ int ha_spartan::delete_table(const char *, const dd::Table *) {
   @see
   mysql_rename_table() in sql_table.cc
 */
-int ha_spartan::rename_table(const char *, const char *, const dd::Table *,
+int ha_spartan::rename_table(const char * from, const char * to, const dd::Table *,
                              dd::Table *) {
-  DBUG_TRACE;
-  return HA_ERR_WRONG_COMMAND;
+  DBUG_ENTER("ha_spartan::rename_table");
+  char data_from[FN_REFLEN];
+  char data_to[FN_REFLEN];
+
+  my_copy(fn_format(data_from, from, "", SDE_EXT,
+			  MY_REPLACE_EXT|MY_UNPACK_FILENAME),
+		  fn_format(data_to, to, "", SDE_EXT,
+			  MY_REPLACE_EXT|MY_UNPACK_FILENAME),
+		  MYF(0));
+  my_delete(data_from, MYF(0));
+  DBUG_RETURN(0);
 }
 
 /**
@@ -739,26 +773,15 @@ static MYSQL_THDVAR_UINT(create_count_thdvar, 0, nullptr, nullptr, nullptr, 0,
 
 int ha_spartan::create(const char *name, TABLE *, HA_CREATE_INFO *,
                        dd::Table *) {
-  DBUG_TRACE;
-  /*
-    This is not implemented but we want someone to be able to see that it
-    works.
-  */
+   DBUG_ENTER("ha_spartan::create"); 
+   char name_buff[FN_REFLEN];
 
-  /*
-    It's just an spartan of THDVAR_SET() usage below.
-  */
-  THD *thd = ha_thd();
-  char *buf = (char *)my_malloc(PSI_NOT_INSTRUMENTED, SHOW_VAR_FUNC_BUFF_SIZE,
-                                MYF(MY_FAE));
-  snprintf(buf, SHOW_VAR_FUNC_BUFF_SIZE, "Last creation '%s'", name);
-  THDVAR_SET(thd, last_create_thdvar, buf);
-  my_free(buf);
-
-  uint count = THDVAR(thd, create_count_thdvar) + 1;
-  THDVAR_SET(thd, create_count_thdvar, &count);
-
-  return 0;
+   if (!(share = get_share()))
+	   DBUG_RETURN(1);
+   if (share->data_class->create_table(fn_format(name_buff, name, "", SDE_EXT, MY_REPLACE_EXT|MY_UNPACK_FILENAME)))
+	   DBUG_RETURN(-1);
+   share->data_class->close_table();
+   DBUG_RETURN(0);
 }
 
 struct st_mysql_storage_engine spartan_storage_engine = {

@@ -45,6 +45,7 @@
 #include "my_inttypes.h"
 #include "sql/handler.h" /* handler */
 #include "thr_lock.h"    /* THR_LOCK, THR_LOCK_DATA */
+#include "storage/spartan/spartan_data.h"
 
 /** @brief
   Spartan_share is a class that will be shared among all open handlers.
@@ -52,9 +53,17 @@
 */
 class Spartan_share : public Handler_share {
  public:
+  mysql_mutex_t mutex;
   THR_LOCK lock;
+  Spartan_data *data_class;
   Spartan_share();
-  ~Spartan_share() override { thr_lock_delete(&lock); }
+  ~Spartan_share() {
+	  thr_lock_delete(&lock);
+	  mysql_mutex_destroy(&mutex);
+	  if (data_class != nullptr)
+		delete data_class;
+	  data_class = nullptr;
+  }
 };
 
 /** @brief

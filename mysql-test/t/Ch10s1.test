@@ -2,6 +2,7 @@
 # Simple test for the Spartan storage engine
 #
 --disable_warnings
+INSTALL PLUGIN spartan SONAME 'ha_spartan.so';
 drop table if exists t1;
 --enable_warnings
 
@@ -13,6 +14,6 @@ CREATE TABLE t1 (
 
 SELECT * FROM t1;
 
-RENAME TABLE t1 TO t2;
+DROP TABLE t1;
+UNINSTALL PLUGIN spartan;
 
-DROP TABLE t2;
